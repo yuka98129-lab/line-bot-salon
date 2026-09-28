@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { messagingApi, validateSignature, type webhook } from "@line/bot-sdk";
 import { classifyCategory, generateFaqAnswer } from "@/lib/claude";
 import { getFaqCategories, searchFaq } from "@/lib/faq";
+import { getAllMenus } from "@/lib/menus";
 import { notifyOwnerOfLowConfidence } from "@/lib/notifyOwner";
 import { getSupabaseServerClient } from "@/lib/supabase";
 
@@ -55,7 +56,8 @@ async function handleEvent(event: webhook.Event) {
     const categories = await getFaqCategories();
     const category = await classifyCategory(userMessage, categories);
     const faqContext = await searchFaq(category);
-    const result = await generateFaqAnswer(userMessage, faqContext);
+    const menuContext = await getAllMenus();
+    const result = await generateFaqAnswer(userMessage, faqContext, menuContext);
 
     confidence = result.confidence;
     replyText =

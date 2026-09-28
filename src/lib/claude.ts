@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { FaqRow } from "@/lib/faq";
+import type { MenuRow } from "@/lib/menus";
 
 const MODEL = "claude-haiku-4-5-20251001";
 
@@ -58,9 +59,25 @@ export async function classifyCategory(
   return input.category ?? null;
 }
 
+function formatMenuText(menuContext: MenuRow[]): string {
+  if (menuContext.length === 0) {
+    return "(メニュー情報がありません)";
+  }
+
+  return menuContext
+    .map((row) => {
+      const price = `${row.price.toLocaleString("ja-JP")}円`;
+      return row.description
+        ? `${row.name}: ${price}(${row.description})`
+        : `${row.name}: ${price}`;
+    })
+    .join("\n");
+}
+
 export async function generateFaqAnswer(
   message: string,
   faqContext: FaqRow[],
+  menuContext: MenuRow[],
 ): Promise<{ answer: string; confidence: "高" | "中" | "低" }> {
   const faqText =
     faqContext.length > 0
@@ -69,23 +86,26 @@ export async function generateFaqAnswer(
           .join("\n\n")
       : "(該当するFAQがありません)";
 
+  const menuText = formatMenuText(menuContext);
+
   const response = await getAnthropicClient().messages.create({
     model: MODEL,
     max_tokens: 1024,
     system:
       "あなたは美容サロンのLINE公式アカウントのFAQ自動応答アシスタントです。" +
-      "以下のFAQの内容だけを根拠にユーザーの質問に回答してください。FAQにない情報を推測や創作で補わないでください。\n\n" +
+      "以下の「メニュー・料金一覧」と「FAQ一覧」の内容だけを根拠にユーザーの質問に回答してください。" +
+      "そこにない情報を推測や創作で補わないでください。\n\n" +
       "確信度の判定ルール:\n" +
-      "- 高: FAQに質問と直接一致する記述があり、そのまま回答できる\n" +
-      "- 中: FAQに関連する記述はあるが、完全には一致しない、または一部推測を含む\n" +
-      "- 低: FAQに質問へ直接該当する記述がない、またはFAQと無関係な質問である\n" +
-      "FAQに直接該当する記述がない場合は、必ず confidence を低にしてください。\n\n" +
-      `## FAQ一覧\n${faqText}`,
+      "- 高: メニュー・料金一覧またはFAQに質問と直接一致する記述があり、そのまま回答できる\n" +
+      "- 中: 関連する記述はあるが、完全には一致しない、または一部推測を含む\n" +
+      "- 低: 質問へ直接該当する記述がない、または無関係な質問である\n" +
+      "直接該当する記述がない場合は、必ず confidence を低にしてください。\n\n" +
+      `## メニュー・料金一覧\n${menuText}\n\n## FAQ一覧\n${faqText}`,
     messages: [{ role: "user", content: message }],
     tools: [
       {
         name: "answer_faq",
-        description: "FAQに基づいてユーザーの質問に回答する",
+        description: "メニュー・料金一覧とFAQに基づいてユーザーの質問に回答する",
         input_schema: {
           type: "object",
           properties: {
